@@ -130,7 +130,10 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
         "--metrics-json", type=Path, help="also write the run's metrics to this file"
     )
     parser.add_argument(
-        "--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"]
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        help="how much to log (default INFO)",
     )
     args = parser.parse_args(argv)
     if args.metrics_json is not None and args.metrics_json.resolve() in (
