@@ -6,7 +6,9 @@ which may hold a real key, is never read.
 
 import json
 import logging
+import os
 import shutil
+import sys
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -104,18 +106,28 @@ def test_one_failed_paragraph_still_writes_the_output_but_exits_with_3(
     assert "Line 9: paragraph left unchanged" in caplog.text
 
 
-def test_when_no_paragraph_can_be_proofread_nothing_is_written(
+def test_when_no_paragraph_can_be_proofread_only_the_metrics_are_written(
     workspace: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     def answer(text: str) -> list[Finding]:
         raise ProofreadError("Could not reach the API: Connection error.")
 
     install_fake_model(monkeypatch, answer)
-    assert main(["input.xml", "--lang", "en", "--style-guide", STYLE_GUIDE]) == EXIT_FAILED
+    caplog.set_level(logging.INFO)
+    code = main(
+        ["input.xml", "--lang", "en", "--style-guide", STYLE_GUIDE, "--metrics-json", "m.json"]
+    )
+    assert code == EXIT_FAILED
     assert "No paragraph could be proofread" in caplog.text
+    assert "4 paragraphs failed" in caplog.text
     assert not (workspace / "input.corrected.xml").exists()
+    assert json.loads((workspace / "m.json").read_text())["paragraphs_failed"] == 4
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32" or os.geteuid() == 0,
+    reason="chmod cannot stop Windows or the root user from writing to a folder",
+)
 def test_an_unwritable_folder_is_reported_before_any_api_call(
     workspace: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -132,6 +144,28 @@ def test_an_unwritable_folder_is_reported_before_any_api_call(
     assert code == EXIT_FAILED
     assert "Cannot write to the folder" in caplog.text
     assert calls == []
+
+
+def test_a_missing_metrics_folder_is_reported_before_any_api_call(
+    workspace: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    calls = []
+    install_fake_model(monkeypatch, lambda text: calls.append(text) or [])
+    code = main(
+        [
+            "input.xml",
+            "--lang",
+            "en",
+            "--style-guide",
+            STYLE_GUIDE,
+            "--metrics-json",
+            "missing/m.json",
+        ]
+    )
+    assert code == EXIT_FAILED
+    assert "Cannot write to the folder missing" in caplog.text
+    assert calls == []
+    assert not (workspace / "input.corrected.xml").exists()
 
 
 def test_an_api_error_is_reported_with_the_apis_own_message(
@@ -242,8 +276,10 @@ def test_a_rejected_api_key_is_reported_without_a_traceback(
         ["--lang", "english!"],
         ["--lang", "en", "--concurrency", "0"],
         ["--lang", "en", "--effort", "huge"],
+        ["--lang", "en", "--metrics-json", "input.xml"],
+        ["--lang", "en", "--metrics-json", "input.corrected.xml"],
     ],
-    ids=["language tag", "concurrency", "effort"],
+    ids=["language tag", "concurrency", "effort", "metrics on input", "metrics on output"],
 )
 def test_a_bad_command_line_exits_with_code_2(bad_arguments: list[str]) -> None:
     with pytest.raises(SystemExit) as raised:

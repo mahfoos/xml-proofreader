@@ -12,6 +12,10 @@ import pytest
 from xml_proofreader.locator import Paragraph, XmlInputError, find_paragraphs
 
 FIXTURES = Path(__file__).parent / "fixtures"
+XHTML_DOCTYPE = (
+    b'<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" '
+    b'"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">'
+)
 
 
 def wrapped_bytes(raw: bytes, paragraph: Paragraph, phrase: str) -> bytes | None:
@@ -166,3 +170,14 @@ def test_encodings_other_than_utf8_are_rejected() -> None:
         find_paragraphs(b'<?xml version="1.0" encoding="ISO-8859-1"?><d><p>x</p></d>')
     with pytest.raises(XmlInputError, match="UTF-16"):
         find_paragraphs("<d><p>x</p></d>".encode("utf-16"))
+
+
+def test_an_entity_defined_outside_the_file_is_refused_inside_a_paragraph() -> None:
+    raw = XHTML_DOCTYPE + b"<html><body><p>Don&rsquo;t worry.</p></body></html>"
+    with pytest.raises(XmlInputError, match="rsquo"):
+        find_paragraphs(raw)
+
+
+def test_an_entity_defined_outside_the_file_is_harmless_outside_paragraphs() -> None:
+    raw = XHTML_DOCTYPE + b"<html><body><h1>Caf&eacute;</h1><p>Fine.</p></body></html>"
+    assert [p.text for p in find_paragraphs(raw)] == ["Fine."]

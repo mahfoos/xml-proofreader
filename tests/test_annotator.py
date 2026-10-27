@@ -7,6 +7,7 @@ import pytest
 from pydantic import ValidationError
 
 from xml_proofreader.annotator import (
+    BAD_CHARACTER,
     EMPTY_ORIGINAL,
     MISSING_REASON,
     NO_CHANGE,
@@ -80,6 +81,21 @@ def test_findings_listed_out_of_order_are_still_placed() -> None:
     assert [raw[p.start : p.end] for p in result.placements] == [b"untill", b"committe"]
 
 
+def test_a_word_is_not_matched_inside_a_longer_word() -> None:
+    raw = b"<d><p>The effective date will effect us.</p></d>"
+    result = annotate_one_paragraph(raw, [finding("effect", "affect", "grammar")])
+    assert result.output == (
+        b'<d><p>The effective date will <error type="grammar" correction="affect">'
+        b"effect</error> us.</p></d>"
+    )
+
+
+def test_a_language_written_without_spaces_can_still_be_matched() -> None:
+    raw = "<d><p>他跑的很快。</p></d>".encode()
+    result = annotate_one_paragraph(raw, [finding("的", "得", "grammar")])
+    assert [raw[p.start : p.end].decode() for p in result.placements] == ["的"]
+
+
 def test_text_written_with_an_entity_is_wrapped_as_its_raw_bytes() -> None:
     raw = b"<d><p>It&apos;s a test.</p></d>"
     result = annotate_one_paragraph(
@@ -122,6 +138,7 @@ def test_attribute_values_survive_a_round_trip_through_an_xml_parser() -> None:
         (finding("", "x"), EMPTY_ORIGINAL),
         (finding("met", "met"), NO_CHANGE),
         (finding("met", "meet", "styleguide", ""), MISSING_REASON),
+        (finding("met", "meet", "grammar", "A form feed \x0c here"), BAD_CHARACTER),
         (finding("absent", "present"), NOT_FOUND),
         (finding("The committe", "The committee"), UNSAFE_SPAN),
     ],

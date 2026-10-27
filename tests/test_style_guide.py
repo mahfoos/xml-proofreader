@@ -1,5 +1,6 @@
 """Tests for reading the style guide .docx into text."""
 
+import zipfile
 from pathlib import Path
 
 import docx
@@ -83,6 +84,21 @@ def test_a_file_that_is_not_a_word_document_raises_a_clear_error(tmp_path: Path)
     path.write_text("just some text")
     with pytest.raises(StyleGuideError, match="Cannot read"):
         load_style_guide(path)
+
+
+def test_a_word_template_raises_a_clear_error(tmp_path: Path) -> None:
+    document_path = tmp_path / "guide.docx"
+    docx.Document().save(str(document_path))
+    # A .dotx template is a .docx package whose main part has a different content type.
+    template_path = tmp_path / "guide.dotx"
+    with zipfile.ZipFile(document_path) as source, zipfile.ZipFile(template_path, "w") as target:
+        for item in source.infolist():
+            data = source.read(item)
+            if item.filename == "[Content_Types].xml":
+                data = data.replace(b"document.main+xml", b"template.main+xml")
+            target.writestr(item, data)
+    with pytest.raises(StyleGuideError, match="Cannot read"):
+        load_style_guide(template_path)
 
 
 def test_an_empty_document_raises_a_clear_error(tmp_path: Path) -> None:

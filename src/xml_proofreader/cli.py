@@ -5,7 +5,7 @@ annotated copy next to the input as NAME.corrected.xml. The API key comes from
 ANTHROPIC_API_KEY, which can also be set in a .env file in the current folder.
 
 Exit codes: 0 when every paragraph was proofread; 3 when the output was
-written but some paragraphs could not be proofread; 1 when nothing was
+written but some paragraphs could not be proofread; 1 when no output was
 written, including when no paragraph at all could be proofread; 2 when the
 command line itself is wrong; 130 when interrupted.
 """
@@ -132,7 +132,13 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument(
         "--log-level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"]
     )
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.metrics_json is not None and args.metrics_json.resolve() in (
+        args.input.resolve(),
+        output_path(args.input).resolve(),
+    ):
+        parser.error("--metrics-json must not be the input file or the output file")
+    return args
 
 
 def language_tag(value: str) -> str:
@@ -184,15 +190,17 @@ async def run(args: argparse.Namespace) -> int:
         The process exit code: 0, 1 or 3.
 
     Raises:
-        OSError: If a file cannot be read, or the output folder is not
-            writable. Other errors from the steps below pass through to main.
+        OSError: If a file cannot be read, or the folder for the output or
+            the metrics file is not writable. Other errors from the steps
+            below pass through to main.
     """
     started = time.perf_counter()
     raw = args.input.read_bytes()
     style_guide = load_style_guide(args.style_guide)
     destination = output_path(args.input)
-    if not os.access(destination.parent, os.W_OK):
-        raise OSError(f"Cannot write to the folder {destination.parent}, so nothing was sent.")
+    for path in (destination, args.metrics_json):
+        if path is not None and not os.access(path.parent, os.W_OK):
+            raise OSError(f"Cannot write to the folder {path.parent}, so nothing was sent.")
 
     timeout = anthropic.Timeout(API_TIMEOUT_SECONDS, connect=CONNECT_TIMEOUT_SECONDS)
     async with anthropic.AsyncAnthropic(timeout=timeout, max_retries=API_MAX_RETRIES) as client:
@@ -202,16 +210,18 @@ async def run(args: argparse.Namespace) -> int:
 
     log_problems(correction)
     if correction.texts_proofread and correction.texts_failed == correction.texts_proofread:
-        log.error("No paragraph could be proofread, so nothing was written.")
-        return EXIT_FAILED
-    write_atomically(destination, correction.output)
-    log.info("Wrote %s", destination)
+        log.error("No paragraph could be proofread, so no output was written.")
+        exit_code = EXIT_FAILED
+    else:
+        write_atomically(destination, correction.output)
+        log.info("Wrote %s", destination)
+        exit_code = EXIT_PARTIAL if correction.failures else EXIT_OK
 
     metrics = collect_metrics(args.input, started, correction, proofreader.usage)
     log.info("%s", metrics.summary())
     if args.metrics_json:
         metrics.write_json(args.metrics_json)
-    return EXIT_PARTIAL if correction.failures else EXIT_OK
+    return exit_code
 
 
 def collect_metrics(

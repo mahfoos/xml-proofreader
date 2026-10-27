@@ -6,6 +6,7 @@ and builds the output from slices of the input. The bytes between the tags are
 the input's own bytes, so every paragraph's text stays exactly as it was.
 """
 
+import re
 from dataclasses import dataclass
 from xml.sax.saxutils import escape
 
@@ -15,11 +16,15 @@ from .locator import Paragraph
 EMPTY_ORIGINAL = "the original text is empty"
 NO_CHANGE = "the correction is identical to the original"
 MISSING_REASON = "a styleguide finding needs a reason"
+BAD_CHARACTER = "the correction or reason has a character that XML does not allow"
 NOT_FOUND = "the original text is not in the paragraph"
 OVERLAPS = "it overlaps an earlier finding"
 UNSAFE_SPAN = "it would cross markup, sit inside CDATA or split an entity"
 
 _ATTRIBUTE_ESCAPES = {'"': "&quot;", "\n": "&#10;", "\r": "&#13;", "\t": "&#9;"}
+# XML 1.0 allows tab, line feed, carriage return and every character from the
+# space upward, except the surrogate range and the two characters U+FFFE and U+FFFF.
+_NOT_ALLOWED_IN_XML = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]")
 
 
 @dataclass(frozen=True)
@@ -98,10 +103,9 @@ def place_findings(
 ) -> tuple[list[Placement], list[Rejection]]:
     """Work out where each finding's tags go, and reject the ones that are unsafe.
 
-    The model lists findings in reading order, so each search starts where the
-    previous accepted finding ended. That is how a repeated word is matched to
-    the right occurrence. If the text is not found after that point, a second
-    search from the start catches a finding that was listed out of order.
+    The model lists findings in reading order, so a match after the previous
+    accepted finding is preferred. That is how a repeated word is matched to
+    the right occurrence. _locate describes every rule for choosing a match.
 
     Args:
         paragraph: The paragraph the findings belong to.
@@ -123,9 +127,7 @@ def place_findings(
             rejections.append(Rejection(paragraph.line, finding, problem))
             continue
 
-        char_start = text.find(finding.original, search_from)
-        if char_start == -1:
-            char_start = text.find(finding.original)
+        char_start = _locate(text, finding.original, search_from)
         if char_start == -1:
             rejections.append(Rejection(paragraph.line, finding, NOT_FOUND))
             continue
@@ -193,7 +195,58 @@ def _content_problem(finding: Finding) -> str | None:
         return NO_CHANGE
     if finding.type == "styleguide" and finding.reason.strip() == "":
         return MISSING_REASON
+    if _NOT_ALLOWED_IN_XML.search(finding.correction + finding.reason):
+        return BAD_CHARACTER
     return None
+
+
+def _locate(text: str, original: str, search_from: int) -> int:
+    """Choose where a finding's original text sits in the paragraph.
+
+    Matches that begin and end at the edges of words come first, so "its" is
+    not found inside "Credits". A match inside a longer word is used only when
+    there is no other, which keeps languages written without spaces working.
+    Within each group, the first match after search_from wins, because the
+    model lists findings in reading order. Failing that, the first match
+    anywhere wins, which catches a finding listed out of order.
+
+    Args:
+        text: The paragraph's text.
+        original: The finding's original text. Never empty.
+        search_from: Where the previous accepted finding ended.
+
+    Returns:
+        The index where original starts in text, or -1 if it is not there.
+    """
+    matches = [index for index in range(len(text)) if text.startswith(original, index)]
+    whole_word_matches = [
+        index for index in matches if not _cuts_a_word(text, index, index + len(original))
+    ]
+    for candidates in (whole_word_matches, matches):
+        later = [index for index in candidates if index >= search_from]
+        if later:
+            return later[0]
+        if candidates:
+            return candidates[0]
+    return -1
+
+
+def _cuts_a_word(text: str, start: int, end: int) -> bool:
+    """Tell whether a span of text begins or ends in the middle of a word.
+
+    Args:
+        text: The paragraph's text.
+        start: Index of the span's first character.
+        end: Index just past the span's last character.
+
+    Returns:
+        True if a letter or digit at either edge of the span has another
+        letter or digit right beside it, outside the span, as "its" does
+        inside "Credits".
+    """
+    cuts_at_start = start > 0 and text[start - 1].isalnum() and text[start].isalnum()
+    cuts_at_end = end < len(text) and text[end - 1].isalnum() and text[end].isalnum()
+    return cuts_at_start or cuts_at_end
 
 
 def _opening_tag(finding: Finding) -> bytes:

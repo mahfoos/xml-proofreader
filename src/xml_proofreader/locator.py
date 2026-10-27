@@ -17,7 +17,7 @@ from xml.parsers import expat
 
 
 class XmlInputError(Exception):
-    """The input is not well-formed XML, or is not encoded as UTF-8."""
+    """The input is not well-formed XML, is not UTF-8, or has paragraph text it cannot read."""
 
 
 @dataclass
@@ -131,8 +131,9 @@ def find_paragraphs(raw: bytes) -> list[Paragraph]:
         The paragraphs, with byte offsets for every piece of their text.
 
     Raises:
-        XmlInputError: If the document is not well-formed XML, or is not
-            encoded as UTF-8.
+        XmlInputError: If the document is not well-formed XML, is not
+            encoded as UTF-8, or uses an entity in a paragraph whose
+            definition is outside the file.
     """
     if raw.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
         raise XmlInputError("Input is UTF-16; only UTF-8 files are supported.")
@@ -169,6 +170,7 @@ class _Collector:
         self.parser.StartElementHandler = self.on_start_tag
         self.parser.EndElementHandler = self.on_end_tag
         self.parser.CharacterDataHandler = self.on_text
+        self.parser.SkippedEntityHandler = self.on_skipped_entity
         self.parser.StartCdataSectionHandler = self.on_cdata_start
         self.parser.EndCdataSectionHandler = self.on_cdata_end
         self.parser.CommentHandler = self.on_other_markup
@@ -181,7 +183,8 @@ class _Collector:
             Every paragraph found, in document order.
 
         Raises:
-            XmlInputError: If expat finds the document is not well-formed.
+            XmlInputError: If expat finds the document is not well-formed, or
+                a paragraph uses an entity whose definition is outside the file.
         """
         try:
             self.parser.Parse(self.raw, True)
@@ -240,6 +243,28 @@ class _Collector:
         )
         self.paragraphs[-1].chunks.append(chunk)
         self.pending = chunk
+
+    def on_skipped_entity(self, name: str, is_parameter_entity: bool) -> None:
+        """Refuse an entity in a paragraph whose definition expat could not read.
+
+        This happens when the entity is defined in an external DTD, which
+        expat does not load. Expat then leaves the entity out of the text, so
+        the model would proofread "Don&rsquo;t" as "Dont". Outside paragraphs
+        the entity does no harm, because that text is never read or changed.
+
+        Args:
+            name: The entity's name, such as rsquo.
+            is_parameter_entity: Whether the entity belongs to the DTD rather
+                than the text. Unused, but expat always passes it.
+
+        Raises:
+            XmlInputError: If the entity is inside a paragraph.
+        """
+        if self.paragraph_depth is not None:
+            raise XmlInputError(
+                f"Line {self.parser.CurrentLineNumber}: the entity &{name}; is defined "
+                "outside this file, so its text is unknown."
+            )
 
     def on_cdata_start(self) -> None:
         """Mark the start of a CDATA section, which also ends the current run."""

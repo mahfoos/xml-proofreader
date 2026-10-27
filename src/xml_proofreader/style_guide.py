@@ -36,7 +36,7 @@ def load_style_guide(path: Path) -> str:
     """
     try:
         document = docx.Document(str(path))
-    except (PackageNotFoundError, zipfile.BadZipFile, KeyError, OSError) as error:
+    except (PackageNotFoundError, zipfile.BadZipFile, KeyError, OSError, ValueError) as error:
         raise StyleGuideError(f"Cannot read the style guide {path}: {error}") from error
 
     lines: list[str] = []
