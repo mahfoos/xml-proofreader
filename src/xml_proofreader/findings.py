@@ -30,3 +30,11 @@ class Finding(BaseModel):
     reason: str = Field(
         description="A short explanation. For styleguide errors, the style guide rule broken."
     )
+
+
+class ParagraphFindings(BaseModel):
+    """Every error found in one paragraph."""
+
+    findings: list[Finding] = Field(
+        description="The errors in reading order. An empty list if the paragraph has none."
+    )
