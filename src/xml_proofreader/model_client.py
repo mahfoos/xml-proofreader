@@ -19,7 +19,7 @@ from .findings import Finding, ParagraphFindings
 from .prompt import build_system_prompt, build_user_message
 
 DEFAULT_MODEL = "claude-opus-5-5"
-DEFAULT_EFFORT = "medium"
+DEFAULT_EFFORT = "high"
 MAX_TOKENS = 16000
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
 

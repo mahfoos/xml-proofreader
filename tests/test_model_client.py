@@ -88,7 +88,7 @@ def test_the_request_carries_the_cached_system_prompt_the_paragraph_and_the_sche
     assert body["system"][0]["cache_control"] == {"type": "ephemeral"}
     assert "STYLE GUIDE TEXT" in body["system"][0]["text"]
     assert body["messages"] == [{"role": "user", "content": "<paragraph>teh cat</paragraph>"}]
-    assert body["output_config"]["effort"] == "medium"
+    assert body["output_config"]["effort"] == "high"
     assert body["output_config"]["format"]["type"] == "json_schema"
     assert "thinking" not in body
     assert "temperature" not in body
@@ -103,9 +103,9 @@ def test_server_side_fallbacks_are_requested_with_their_beta_header():
 
 def test_model_and_effort_can_be_changed():
     fake = FakeAPI()
-    proofread(fake, ["teh cat"], model="claude-sonnet-5-5", effort="high")
+    proofread(fake, ["teh cat"], model="claude-sonnet-5-5", effort="low")
     assert fake.last_body["model"] == "claude-sonnet-5-5"
-    assert fake.last_body["output_config"]["effort"] == "high"
+    assert fake.last_body["output_config"]["effort"] == "low"
 
 
 def test_the_system_prompt_is_the_same_for_every_paragraph():

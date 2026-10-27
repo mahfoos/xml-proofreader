@@ -35,33 +35,12 @@ def annotate_one_paragraph(raw: bytes, findings: list[Finding]) -> Annotation:
     return annotate(raw, find_paragraphs(raw), [findings])
 
 
-EXAMPLE_FINDINGS = [
-    [
-        finding("committe", "committee"),
-        finding("untill", "until"),
-        finding("wednesday", "Wednesday", "capitalization"),
-        finding("availble", "available"),
-    ],
-    [
-        finding("john", "John", "capitalization"),
-        finding("new york", "New York", "capitalization"),
-    ],
-    [
-        finding("$2,000,000", "$2 million", "styleguide", "Spell out million, billion, etc."),
-        finding("January, 2024", "January 2024", "styleguide", "No comma between month and year"),
-        finding("it's", "its", "punctuation", "Possessive its has no apostrophe"),
-        finding("publicly-owned", "publicly owned", "styleguide", "Do not hyphenate ly adverbs"),
-    ],
-    [],
-]
-
-
 # --- Whole documents
 
 
-def test_the_example_output_is_reproduced_byte_for_byte():
+def test_the_example_output_is_reproduced_byte_for_byte(example_findings):
     raw = (FIXTURES / "example_input.xml").read_bytes()
-    result = annotate(raw, find_paragraphs(raw), EXAMPLE_FINDINGS)
+    result = annotate(raw, find_paragraphs(raw), example_findings)
     assert result.rejections == []
     assert result.output == (FIXTURES / "example_output.xml").read_bytes()
 
