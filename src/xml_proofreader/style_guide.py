@@ -21,7 +21,19 @@ class StyleGuideError(Exception):
 
 
 def load_style_guide(path: Path) -> str:
-    """Return the text of the style guide at path, one line per paragraph or table row."""
+    """Read a style guide .docx into text, one line per paragraph or table row.
+
+    Args:
+        path: The style guide file.
+
+    Returns:
+        The style guide as text, with headings, bullets, bold labels and
+        table rows marked as the module docstring describes.
+
+    Raises:
+        StyleGuideError: If the file is missing, is not a Word document, or
+            contains no text.
+    """
     try:
         document = docx.Document(str(path))
     except (PackageNotFoundError, zipfile.BadZipFile, KeyError, OSError) as error:
@@ -42,11 +54,19 @@ def load_style_guide(path: Path) -> str:
 
 
 def _paragraph_line(paragraph: Paragraph) -> str:
-    """Render one Word paragraph as text, or return "" if it is blank."""
+    """Render one Word paragraph as a line of text.
+
+    Args:
+        paragraph: The Word paragraph.
+
+    Returns:
+        The paragraph's text, marked as a heading, bullet or bold label when
+        its style says so, or "" if the paragraph is blank.
+    """
     text = paragraph.text.strip()
     if not text:
         return ""
-    style = paragraph.style.name if paragraph.style is not None else ""
+    style = _style_name(paragraph)
     level = _heading_level(style)
     if level is not None:
         return "\n" + "#" * (level + 1) + " " + text
@@ -57,12 +77,34 @@ def _paragraph_line(paragraph: Paragraph) -> str:
     return text
 
 
+def _style_name(paragraph: Paragraph) -> str:
+    """Get a paragraph's style name safely.
+
+    Args:
+        paragraph: The Word paragraph.
+
+    Returns:
+        The style's name, or "" when the paragraph has no style or the style
+        has no name.
+    """
+    if paragraph.style is None or paragraph.style.name is None:
+        return ""
+    return paragraph.style.name
+
+
 def _heading_level(style: str) -> int | None:
-    """Return 0 for a title, the heading's level for a heading, or None for other styles.
+    """Work out whether a style is a title or heading, and at what level.
 
     Built-in styles are named "Title" and "Heading 1", "Heading 2" and so on.
     Custom styles such as "PLI_Level 1 Head" follow the same idea, so any
     style whose name contains "head" counts, and its first digit is its level.
+
+    Args:
+        style: The style's name.
+
+    Returns:
+        0 for a title, the heading's level for a heading, or None for any
+        other style.
     """
     name = style.lower()
     if name == "title":
@@ -74,13 +116,27 @@ def _heading_level(style: str) -> int | None:
 
 
 def _is_bold(paragraph: Paragraph) -> bool:
-    """True when every run with visible text is bold, as in a hand-made heading."""
+    """Check whether a paragraph is entirely bold, as in a hand-made heading.
+
+    Args:
+        paragraph: The Word paragraph.
+
+    Returns:
+        True when every run with visible text is bold.
+    """
     runs = [run for run in paragraph.runs if run.text.strip()]
     return bool(runs) and all(run.bold for run in runs)
 
 
 def _table_lines(table: Table) -> list[str]:
-    """Render each non-empty table row as its cell texts joined by " | "."""
+    """Render a Word table as lines of text.
+
+    Args:
+        table: The Word table.
+
+    Returns:
+        One line per non-empty row, with its cell texts joined by " | ".
+    """
     lines = []
     for row in table.rows:
         cells = [cell.text.strip() for cell in row.cells]

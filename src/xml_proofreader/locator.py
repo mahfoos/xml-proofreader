@@ -22,7 +22,21 @@ class XmlInputError(Exception):
 
 @dataclass
 class Chunk:
-    """One piece of paragraph text, exactly as expat reported it."""
+    """One piece of paragraph text, exactly as expat reported it.
+
+    Attributes:
+        text: The decoded text, with entities replaced and every line break
+            turned into a single line feed.
+        start: Byte offset in the file where this text's raw bytes begin.
+        run: Chunks share a run number when no tag, comment or CDATA marker
+            separates them.
+        in_cdata: True inside <![CDATA[...]]>, where an inserted tag would
+            become literal text.
+        end: Byte offset just past the raw bytes. Set when the next parser
+            event arrives.
+        plain: True when the raw bytes are exactly the text encoded as UTF-8,
+            so every character has its own byte position.
+    """
 
     text: str
     start: int
@@ -34,7 +48,12 @@ class Chunk:
 
 @dataclass
 class Paragraph:
-    """One <p> element and its text, including text inside child elements."""
+    """One <p> element and its text, including text inside child elements.
+
+    Attributes:
+        line: Line number of the <p> start tag, for log messages.
+        chunks: The paragraph's text, in the pieces expat reported.
+    """
 
     line: int
     chunks: list[Chunk] = field(default_factory=list)
@@ -45,12 +64,18 @@ class Paragraph:
         return "".join(chunk.text for chunk in self.chunks)
 
     def byte_span(self, char_start: int, char_end: int) -> tuple[int, int] | None:
-        """Map the text slice [char_start:char_end] to (start, end) byte offsets.
+        """Map a slice of the paragraph's text to byte offsets in the file.
 
-        Returns None when tags cannot go around that slice without changing the
-        document: the slice is empty or out of range, crosses a tag, comment or
-        CDATA marker, lies inside CDATA, or starts or ends in the middle of an
-        entity that stands for several characters.
+        Args:
+            char_start: Index in text of the slice's first character.
+            char_end: Index in text just past the slice's last character.
+
+        Returns:
+            The (start, end) byte offsets of the slice's raw bytes, or None
+            when tags cannot go around the slice without changing the
+            document: the slice is empty or out of range, crosses a tag,
+            comment or CDATA marker, lies inside CDATA, or starts or ends in
+            the middle of an entity that stands for several characters.
         """
         if not 0 <= char_start < char_end <= len(self.text):
             return None
@@ -65,11 +90,23 @@ class Paragraph:
         return start, end
 
     def _chunk_at(self, index: int, is_end: bool) -> tuple[Chunk, int]:
-        """Return the chunk holding text position `index`, and the offset inside it.
+        """Find the chunk that holds a position in the paragraph's text.
 
         A position exactly between two chunks goes to the later chunk when it
-        starts a span and to the earlier chunk when it ends one, so a span never
-        swallows a tag that sits between them.
+        starts a span and to the earlier chunk when it ends one, so a span
+        never swallows a tag that sits between them.
+
+        Args:
+            index: The position in text.
+            is_end: True when the position ends a span rather than starts it.
+
+        Returns:
+            The chunk, and the position's offset inside that chunk.
+
+        Raises:
+            IndexError: If the position is beyond the end of the text. This
+                cannot happen when called from byte_span, which checks the
+                range first.
         """
         position = 0
         for chunk in self.chunks:
@@ -81,11 +118,21 @@ class Paragraph:
 
 
 def find_paragraphs(raw: bytes) -> list[Paragraph]:
-    """Return every <p> element in document order.
+    """Find every <p> element in a document, in document order.
 
     Paragraphs are found at any depth and with any namespace prefix. A <p>
     inside another <p> counts as part of the outer one, so no text is
     proofread twice. Empty paragraphs are included, and callers skip them.
+
+    Args:
+        raw: The XML document, as the bytes read from the file.
+
+    Returns:
+        The paragraphs, with byte offsets for every piece of their text.
+
+    Raises:
+        XmlInputError: If the document is not well-formed XML, or is not
+            encoded as UTF-8.
     """
     if raw.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
         raise XmlInputError("Input is UTF-16; only UTF-8 files are supported.")
@@ -103,6 +150,11 @@ class _Collector:
     """Receives expat's events one by one and builds the list of paragraphs."""
 
     def __init__(self, raw: bytes) -> None:
+        """Prepare a parser for one document and connect its events to methods.
+
+        Args:
+            raw: The XML document, as the bytes read from the file.
+        """
         self.raw = raw
         self.paragraphs: list[Paragraph] = []
         self.declared_encoding: str | None = None
@@ -123,6 +175,14 @@ class _Collector:
         self.parser.ProcessingInstructionHandler = self.on_other_markup
 
     def parse(self) -> list[Paragraph]:
+        """Run expat over the whole document.
+
+        Returns:
+            Every paragraph found, in document order.
+
+        Raises:
+            XmlInputError: If expat finds the document is not well-formed.
+        """
         try:
             self.parser.Parse(self.raw, True)
         except expat.ExpatError as error:
@@ -130,9 +190,22 @@ class _Collector:
         return self.paragraphs
 
     def on_xml_declaration(self, version: str, encoding: str | None, standalone: int) -> None:
+        """Remember the encoding named in the <?xml ...?> declaration.
+
+        Args:
+            version: The XML version. Unused, but expat always passes it.
+            encoding: The declared encoding, or None if none is declared.
+            standalone: The standalone flag. Unused, but expat always passes it.
+        """
         self.declared_encoding = encoding
 
     def on_start_tag(self, name: str, attributes: dict[str, str]) -> None:
+        """Go one level deeper, and open a paragraph at the outermost <p>.
+
+        Args:
+            name: The tag name, including any namespace prefix.
+            attributes: The tag's attributes. Unused, but expat always passes them.
+        """
         self.end_text()
         self.depth += 1
         if self.paragraph_depth is None and _local_name(name) == "p":
@@ -140,12 +213,22 @@ class _Collector:
             self.paragraphs.append(Paragraph(line=self.parser.CurrentLineNumber))
 
     def on_end_tag(self, name: str) -> None:
+        """Go one level up, closing the paragraph if its <p> just ended.
+
+        Args:
+            name: The tag name. Unused, because depth alone tells which tag ended.
+        """
         self.end_text()
         if self.depth == self.paragraph_depth:
             self.paragraph_depth = None
         self.depth -= 1
 
     def on_text(self, text: str) -> None:
+        """Record a piece of text, if it is inside a paragraph.
+
+        Args:
+            text: The decoded text that expat reported.
+        """
         self.finish_pending_chunk()
         if self.paragraph_depth is None:
             return
@@ -159,24 +242,35 @@ class _Collector:
         self.pending = chunk
 
     def on_cdata_start(self) -> None:
+        """Mark the start of a CDATA section, which also ends the current run."""
         self.end_text()
         self.in_cdata = True
 
     def on_cdata_end(self) -> None:
+        """Mark the end of a CDATA section, which also ends the current run."""
         self.end_text()
         self.in_cdata = False
 
     def on_other_markup(self, *details: str) -> None:
-        """Comments and processing instructions only matter as boundaries."""
+        """Treat a comment or processing instruction as a boundary between runs.
+
+        Args:
+            *details: The comment text, or the instruction's target and data.
+                Unused, because only the boundary matters.
+        """
         self.end_text()
 
     def end_text(self) -> None:
-        """Every event other than text closes the pending chunk and starts a new run."""
+        """Close the pending chunk and start a new run, for any event except text."""
         self.finish_pending_chunk()
         self.current_run += 1
 
     def finish_pending_chunk(self) -> None:
-        """The current event begins exactly where the pending chunk's raw bytes end."""
+        """Give the pending chunk its end offset and decide whether it is plain.
+
+        The current event begins exactly where the pending chunk's raw bytes
+        end, which is the only way to learn a chunk's end from expat.
+        """
         if self.pending is None:
             return
         chunk = self.pending
@@ -186,7 +280,16 @@ class _Collector:
 
 
 def _byte_offset(chunk: Chunk, offset: int) -> int | None:
-    """Byte position of character `offset` within `chunk`, or None if it has none."""
+    """Find the byte position of a character position inside a chunk.
+
+    Args:
+        chunk: The chunk that holds the position.
+        offset: The character position inside the chunk's text.
+
+    Returns:
+        The byte offset in the file, or None when the position falls inside
+        an entity whose bytes and characters do not line up.
+    """
     if offset == 0:
         return chunk.start
     if offset == len(chunk.text):
@@ -197,5 +300,12 @@ def _byte_offset(chunk: Chunk, offset: int) -> int | None:
 
 
 def _local_name(tag: str) -> str:
-    """The tag name without its namespace prefix: <p> and <h:p> both give "p"."""
+    """Remove the namespace prefix from a tag name.
+
+    Args:
+        tag: A tag name such as "p" or "h:p".
+
+    Returns:
+        The part after the last colon, so "p" and "h:p" both give "p".
+    """
     return tag.rpartition(":")[2]

@@ -18,12 +18,12 @@ FIXTURE_NAMES = [
 ]
 
 
-def test_all_fixtures_are_present():
+def test_all_fixtures_are_present() -> None:
     for name in FIXTURE_NAMES:
         assert (FIXTURES / name).is_file(), f"missing fixture: {name}"
 
 
-def test_example_output_is_example_input_plus_error_tags():
+def test_example_output_is_example_input_plus_error_tags() -> None:
     original = (FIXTURES / "example_input.xml").read_bytes()
     annotated = (FIXTURES / "example_output.xml").read_bytes()
 

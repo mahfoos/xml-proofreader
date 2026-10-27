@@ -8,13 +8,13 @@ from pathlib import Path
 
 import pytest
 
-from xml_proofreader.findings import Finding
+from xml_proofreader.findings import ErrorType, Finding
 from xml_proofreader.locator import find_paragraphs
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
-def _finding(original: str, correction: str, error_type: str, reason: str = "") -> Finding:
+def _finding(original: str, correction: str, error_type: ErrorType, reason: str = "") -> Finding:
     return Finding(original=original, correction=correction, type=error_type, reason=reason)
 
 

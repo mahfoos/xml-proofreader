@@ -24,7 +24,13 @@ _ATTRIBUTE_ESCAPES = {'"': "&quot;", "\n": "&#10;", "\r": "&#13;", "\t": "&#9;"}
 
 @dataclass(frozen=True)
 class Placement:
-    """A finding located in the file. Its tags go around raw[start:end]."""
+    """A finding that has been located in the file.
+
+    Attributes:
+        start: Byte offset where the opening tag goes.
+        end: Byte offset where the closing tag goes.
+        finding: The finding whose tags go around raw[start:end].
+    """
 
     start: int
     end: int
@@ -33,7 +39,13 @@ class Placement:
 
 @dataclass(frozen=True)
 class Rejection:
-    """A finding that was not applied, with its paragraph's line and the reason."""
+    """A finding that was not applied.
+
+    Attributes:
+        line: Line number of the paragraph the finding belongs to.
+        finding: The finding that was refused.
+        problem: Why it was refused, as one of this module's message constants.
+    """
 
     line: int
     finding: Finding
@@ -42,7 +54,13 @@ class Rejection:
 
 @dataclass(frozen=True)
 class Annotation:
-    """The annotated document, the findings applied, and the findings rejected."""
+    """The annotated document, with the findings applied and those refused.
+
+    Attributes:
+        output: The document with every accepted finding wrapped in tags.
+        placements: The findings that were applied.
+        rejections: The findings that were refused, with reasons.
+    """
 
     output: bytes
     placements: list[Placement]
@@ -50,7 +68,21 @@ class Annotation:
 
 
 def annotate(raw: bytes, paragraphs: list[Paragraph], findings: list[list[Finding]]) -> Annotation:
-    """Apply every safe finding to the document. findings[i] belongs to paragraphs[i]."""
+    """Apply every safe finding to the document.
+
+    Args:
+        raw: The original document bytes.
+        paragraphs: The document's paragraphs, from find_paragraphs.
+        findings: One list of findings per paragraph, in the same order, so
+            findings[i] belongs to paragraphs[i]. A blank paragraph gets an
+            empty list.
+
+    Returns:
+        The annotated document, with what was applied and what was refused.
+
+    Raises:
+        ValueError: If paragraphs and findings have different lengths.
+    """
     placements: list[Placement] = []
     rejections: list[Rejection] = []
     for paragraph, paragraph_findings in zip(paragraphs, findings, strict=True):
@@ -70,6 +102,14 @@ def place_findings(
     previous accepted finding ended. That is how a repeated word is matched to
     the right occurrence. If the text is not found after that point, a second
     search from the start catches a finding that was listed out of order.
+
+    Args:
+        paragraph: The paragraph the findings belong to.
+        findings: The model's findings for that paragraph, in reading order.
+
+    Returns:
+        The findings that can be applied, as placements, and the findings
+        that cannot, as rejections with reasons.
     """
     text = paragraph.text
     placements: list[Placement] = []
@@ -108,10 +148,21 @@ def place_findings(
 
 
 def insert_error_tags(raw: bytes, placements: list[Placement]) -> bytes:
-    """Return a copy of raw with an <error> element around every placement.
+    """Wrap an <error> element around every placement.
 
     The copy is assembled from slices of raw, so no input byte is altered and
     no offset shifts while the copy is being built.
+
+    Args:
+        raw: The original document bytes.
+        placements: Where each pair of tags goes, in any order.
+
+    Returns:
+        A new copy of the document with the tags inserted.
+
+    Raises:
+        ValueError: If two placements overlap, because their tags would cross
+            and break the XML.
     """
     pieces: list[bytes] = []
     copied_up_to = 0
@@ -128,7 +179,14 @@ def insert_error_tags(raw: bytes, placements: list[Placement]) -> bytes:
 
 
 def _content_problem(finding: Finding) -> str | None:
-    """Say why a finding is unusable on its own terms, or return None if it is fine."""
+    """Check a finding on its own terms, before searching the text for it.
+
+    Args:
+        finding: The finding to check.
+
+    Returns:
+        The reason the finding is unusable, or None if it looks fine.
+    """
     if finding.original == "":
         return EMPTY_ORIGINAL
     if finding.correction == finding.original:
@@ -139,11 +197,21 @@ def _content_problem(finding: Finding) -> str | None:
 
 
 def _opening_tag(finding: Finding) -> bytes:
-    """Build <error type="..." correction="..." reason="...">, leaving out an empty reason."""
+    """Build the opening <error> tag for a finding.
+
+    Attributes are written in the order type, correction, reason, as in the
+    brief's example output, and an empty reason is left out.
+
+    Args:
+        finding: The finding to describe.
+
+    Returns:
+        The tag as UTF-8 bytes, with every attribute value escaped.
+    """
     attributes = {"type": finding.type, "correction": finding.correction}
     if finding.reason.strip():
         attributes["reason"] = finding.reason
     rendered = "".join(
         f' {name}="{escape(value, _ATTRIBUTE_ESCAPES)}"' for name, value in attributes.items()
     )
-    return f"<error{rendered}>".encode("utf-8")
+    return f"<error{rendered}>".encode()

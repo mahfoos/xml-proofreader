@@ -13,12 +13,21 @@ import httpx2
 import pytest
 
 from xml_proofreader.findings import Finding
-from xml_proofreader.model_client import FALLBACK_BETA, ClaudeProofreader, ProofreadError
+from xml_proofreader.model_client import (
+    DEFAULT_EFFORT,
+    DEFAULT_MODEL,
+    FALLBACK_BETA,
+    ClaudeProofreader,
+    Effort,
+    ProofreadError,
+)
 
 TEH = Finding(original="teh", correction="the", type="spelling", reason="Misspelled word.")
 
 
-def message(text: str | None = '{"findings": []}', stop_reason: str = "end_turn", **extra) -> dict:
+def message(
+    text: str | None = '{"findings": []}', stop_reason: str = "end_turn", **extra: object
+) -> dict[str, object]:
     """A reply in the shape the Messages API returns. A text of None means no content at all."""
     return {
         "id": "msg_test",
@@ -41,7 +50,7 @@ def message(text: str | None = '{"findings": []}', stop_reason: str = "end_turn"
 class FakeAPI:
     """Stands in for the Anthropic API: it records each request and returns one canned reply."""
 
-    def __init__(self, status: int = 200, body: dict | None = None) -> None:
+    def __init__(self, status: int = 200, body: dict[str, object] | None = None) -> None:
         self.status = status
         self.body = body if body is not None else message()
         self.requests: list[httpx2.Request] = []
@@ -55,7 +64,9 @@ class FakeAPI:
         return json.loads(self.requests[-1].content)
 
 
-def proofread(fake: FakeAPI, texts: list[str], **options) -> tuple[list[list[Finding]], ClaudeProofreader]:
+def proofread(
+    fake: FakeAPI, texts: list[str], model: str = DEFAULT_MODEL, effort: Effort = DEFAULT_EFFORT
+) -> tuple[list[list[Finding]], ClaudeProofreader]:
     """Proofread each text through the real SDK, connected to the fake API."""
 
     async def run() -> tuple[list[list[Finding]], ClaudeProofreader]:
@@ -64,7 +75,9 @@ def proofread(fake: FakeAPI, texts: list[str], **options) -> tuple[list[list[Fin
         async with anthropic.AsyncAnthropic(
             api_key="sk-test", http_client=http_client, max_retries=0
         ) as client:
-            proofreader = ClaudeProofreader(client, "STYLE GUIDE TEXT", "en", **options)
+            proofreader = ClaudeProofreader(
+                client, "STYLE GUIDE TEXT", "en", model=model, effort=effort
+            )
             results = [await proofreader.proofread(text) for text in texts]
             return results, proofreader
 
@@ -74,13 +87,13 @@ def proofread(fake: FakeAPI, texts: list[str], **options) -> tuple[list[list[Fin
 # --- A normal answer
 
 
-def test_findings_come_back_as_validated_objects():
+def test_findings_come_back_as_validated_objects() -> None:
     fake = FakeAPI(body=message(json.dumps({"findings": [TEH.model_dump()]})))
     results, _ = proofread(fake, ["teh cat"])
     assert results == [[TEH]]
 
 
-def test_the_request_carries_the_cached_system_prompt_the_paragraph_and_the_schema():
+def test_the_request_carries_the_cached_system_prompt_the_paragraph_and_the_schema() -> None:
     fake = FakeAPI()
     proofread(fake, ["teh cat"])
     body = fake.last_body
@@ -94,28 +107,28 @@ def test_the_request_carries_the_cached_system_prompt_the_paragraph_and_the_sche
     assert "temperature" not in body
 
 
-def test_server_side_fallbacks_are_requested_with_their_beta_header():
+def test_server_side_fallbacks_are_requested_with_their_beta_header() -> None:
     fake = FakeAPI()
     proofread(fake, ["teh cat"])
     assert fake.last_body["fallbacks"] == "default"
     assert fake.requests[-1].headers["anthropic-beta"] == FALLBACK_BETA
 
 
-def test_model_and_effort_can_be_changed():
+def test_model_and_effort_can_be_changed() -> None:
     fake = FakeAPI()
     proofread(fake, ["teh cat"], model="claude-sonnet-5-5", effort="low")
     assert fake.last_body["model"] == "claude-sonnet-5-5"
     assert fake.last_body["output_config"]["effort"] == "low"
 
 
-def test_the_system_prompt_is_the_same_for_every_paragraph():
+def test_the_system_prompt_is_the_same_for_every_paragraph() -> None:
     fake = FakeAPI()
     proofread(fake, ["first paragraph", "second paragraph"])
     first, second = (json.loads(request.content) for request in fake.requests)
     assert first["system"] == second["system"]
 
 
-def test_token_usage_is_added_up_across_calls():
+def test_token_usage_is_added_up_across_calls() -> None:
     fake = FakeAPI()
     _, proofreader = proofread(fake, ["one", "two"])
     usage = proofreader.usage
@@ -126,27 +139,27 @@ def test_token_usage_is_added_up_across_calls():
 # --- Problems that affect only this paragraph
 
 
-def test_a_refusal_is_reported_for_this_paragraph_only():
+def test_a_refusal_is_reported_for_this_paragraph_only() -> None:
     details = {"type": "refusal", "category": "cyber", "explanation": "declined"}
     fake = FakeAPI(body=message(None, "refusal", stop_details=details))
     with pytest.raises(ProofreadError, match="declined this paragraph"):
         proofread(fake, ["teh cat"])
 
 
-def test_an_answer_cut_off_at_the_token_limit_is_reported():
+def test_an_answer_cut_off_at_the_token_limit_is_reported() -> None:
     fake = FakeAPI(body=message('{"findings": [{"original": "te', "max_tokens"))
     with pytest.raises(ProofreadError, match="could not be read as findings"):
         proofread(fake, ["teh cat"])
 
 
 @pytest.mark.parametrize("status", [429, 500, 529])
-def test_errors_the_sdk_retries_are_reported_for_this_paragraph_only(status):
+def test_errors_the_sdk_retries_are_reported_for_this_paragraph_only(status: int) -> None:
     fake = FakeAPI(status, {"type": "error", "error": {"type": "api_error", "message": "busy"}})
-    with pytest.raises(ProofreadError, match=f"kept failing \\({status}\\)"):
+    with pytest.raises(ProofreadError, match=f"kept failing \\({status}\\): busy$"):
         proofread(fake, ["teh cat"])
 
 
-def test_a_network_failure_is_reported_for_this_paragraph_only():
+def test_a_network_failure_is_reported_for_this_paragraph_only() -> None:
     def fail(request: httpx2.Request) -> httpx2.Response:
         raise httpx2.ConnectError("no route to host", request=request)
 
@@ -160,8 +173,10 @@ def test_a_network_failure_is_reported_for_this_paragraph_only():
 
 
 @pytest.mark.parametrize("status", [400, 401, 403, 404])
-def test_errors_that_would_hit_every_paragraph_stop_the_run(status):
-    fake = FakeAPI(status, {"type": "error", "error": {"type": "invalid_request_error", "message": "no"}})
+def test_errors_that_would_hit_every_paragraph_stop_the_run(status: int) -> None:
+    fake = FakeAPI(
+        status, {"type": "error", "error": {"type": "invalid_request_error", "message": "no"}}
+    )
     with pytest.raises(anthropic.APIStatusError) as raised:
         proofread(fake, ["teh cat"])
     assert raised.value.status_code == status

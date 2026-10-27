@@ -18,14 +18,16 @@ from xml_proofreader.annotator import (
     annotate,
     insert_error_tags,
 )
-from xml_proofreader.findings import Finding
+from xml_proofreader.findings import ErrorType, Finding
 from xml_proofreader.locator import find_paragraphs
 from xml_proofreader.verifier import verify
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
-def finding(original: str, correction: str, error_type: str = "spelling", reason: str = "") -> Finding:
+def finding(
+    original: str, correction: str, error_type: ErrorType = "spelling", reason: str = ""
+) -> Finding:
     """Build a Finding with short positional arguments, to keep the tests readable."""
     return Finding(original=original, correction=correction, type=error_type, reason=reason)
 
@@ -38,14 +40,16 @@ def annotate_one_paragraph(raw: bytes, findings: list[Finding]) -> Annotation:
 # --- Whole documents
 
 
-def test_the_example_output_is_reproduced_byte_for_byte(example_findings):
+def test_the_example_output_is_reproduced_byte_for_byte(
+    example_findings: list[list[Finding]],
+) -> None:
     raw = (FIXTURES / "example_input.xml").read_bytes()
     result = annotate(raw, find_paragraphs(raw), example_findings)
     assert result.rejections == []
     assert result.output == (FIXTURES / "example_output.xml").read_bytes()
 
 
-def test_wrapping_every_word_of_the_sample_keeps_the_document_intact():
+def test_wrapping_every_word_of_the_sample_keeps_the_document_intact() -> None:
     raw = (FIXTURES / "sample_input.xml").read_bytes()
     paragraphs = find_paragraphs(raw)
     findings = [[finding(word, word + "x") for word in p.text.split()] for p in paragraphs]
@@ -58,7 +62,7 @@ def test_wrapping_every_word_of_the_sample_keeps_the_document_intact():
 # --- Finding the right text
 
 
-def test_a_repeated_word_is_matched_to_successive_occurrences():
+def test_a_repeated_word_is_matched_to_successive_occurrences() -> None:
     raw = b"<d><p>teh cat and teh dog</p></d>"
     result = annotate_one_paragraph(raw, [finding("teh", "the"), finding("teh", "the")])
     assert result.output == (
@@ -67,16 +71,20 @@ def test_a_repeated_word_is_matched_to_successive_occurrences():
     )
 
 
-def test_findings_listed_out_of_order_are_still_placed():
+def test_findings_listed_out_of_order_are_still_placed() -> None:
     raw = b"<d><p>The committe met untill noon.</p></d>"
-    result = annotate_one_paragraph(raw, [finding("untill", "until"), finding("committe", "committee")])
+    result = annotate_one_paragraph(
+        raw, [finding("untill", "until"), finding("committe", "committee")]
+    )
     assert result.rejections == []
     assert [raw[p.start : p.end] for p in result.placements] == [b"untill", b"committe"]
 
 
-def test_text_written_with_an_entity_is_wrapped_as_its_raw_bytes():
+def test_text_written_with_an_entity_is_wrapped_as_its_raw_bytes() -> None:
     raw = b"<d><p>It&apos;s a test.</p></d>"
-    result = annotate_one_paragraph(raw, [finding("It's", "It is", "clarity", "Avoid contractions")])
+    result = annotate_one_paragraph(
+        raw, [finding("It's", "It is", "clarity", "Avoid contractions")]
+    )
     assert result.output == (
         b'<d><p><error type="clarity" correction="It is" reason="Avoid contractions">'
         b"It&apos;s</error> a test.</p></d>"
@@ -86,7 +94,7 @@ def test_text_written_with_an_entity_is_wrapped_as_its_raw_bytes():
 # --- Writing the attributes
 
 
-def test_attribute_values_survive_a_round_trip_through_an_xml_parser():
+def test_attribute_values_survive_a_round_trip_through_an_xml_parser() -> None:
     raw = b"<d><p>Use x here.</p></d>"
     tricky = 'say "a < b" & mean a > b\nnext line'
     result = annotate_one_paragraph(raw, [finding("x", tricky, "clarity", tricky)])
@@ -118,14 +126,16 @@ def test_attribute_values_survive_a_round_trip_through_an_xml_parser():
         (finding("The committe", "The committee"), UNSAFE_SPAN),
     ],
 )
-def test_an_unusable_finding_is_rejected_and_the_document_is_unchanged(bad_finding, problem):
+def test_an_unusable_finding_is_rejected_and_the_document_is_unchanged(
+    bad_finding: Finding, problem: str
+) -> None:
     raw = b"<d><p>The <b>committe</b> met.</p></d>"
     result = annotate_one_paragraph(raw, [bad_finding])
     assert [r.problem for r in result.rejections] == [problem]
     assert result.output == raw
 
 
-def test_a_finding_that_overlaps_an_earlier_one_is_rejected():
+def test_a_finding_that_overlaps_an_earlier_one_is_rejected() -> None:
     raw = b"<d><p>The committe met.</p></d>"
     first = finding("committe", "committee")
     second = finding("committe met", "committee met")
@@ -134,18 +144,18 @@ def test_a_finding_that_overlaps_an_earlier_one_is_rejected():
     assert [r.problem for r in result.rejections] == [OVERLAPS]
 
 
-def test_overlapping_placements_are_refused_rather_than_crossed():
+def test_overlapping_placements_are_refused_rather_than_crossed() -> None:
     one = finding("ab", "x")
     with pytest.raises(ValueError, match="overlap"):
         insert_error_tags(b"abc", [Placement(0, 2, one), Placement(1, 3, one)])
 
 
-def test_each_paragraph_needs_its_own_list_of_findings():
+def test_each_paragraph_needs_its_own_list_of_findings() -> None:
     raw = b"<d><p>one</p><p>two</p></d>"
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="shorter"):
         annotate(raw, find_paragraphs(raw), [[]])
 
 
-def test_an_unknown_error_type_is_refused_when_the_finding_is_built():
+def test_an_unknown_error_type_is_refused_when_the_finding_is_built() -> None:
     with pytest.raises(ValidationError):
-        Finding(original="x", correction="y", type="typo", reason="")
+        Finding.model_validate({"original": "x", "correction": "y", "type": "typo", "reason": ""})

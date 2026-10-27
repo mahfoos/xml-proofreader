@@ -29,7 +29,7 @@ PARAGRAPHS = [
     os.environ.get("XML_PROOFREADER_LIVE") != "1",
     reason="costs money: set XML_PROOFREADER_LIVE=1 and ANTHROPIC_API_KEY to run",
 )
-def test_a_real_call_finds_an_obvious_misspelling_and_reuses_the_cached_prompt():
+def test_a_real_call_finds_an_obvious_misspelling_and_reuses_the_cached_prompt() -> None:
     guide = load_style_guide(FIXTURES / "style_guide.docx")
 
     async def run() -> tuple[list[ParagraphFindings], TokenUsage]:
@@ -41,7 +41,7 @@ def test_a_real_call_finds_an_obvious_misspelling_and_reuses_the_cached_prompt()
             return answers, proofreader.usage
 
     answers, usage = asyncio.run(run())
-    for paragraph, answer in zip(PARAGRAPHS, answers):
+    for paragraph, answer in zip(PARAGRAPHS, answers, strict=True):
         print(f"\nPARAGRAPH: {paragraph}\nANSWER: {answer.model_dump_json(indent=2)}")
     print(f"\nUSAGE: {usage}")
 

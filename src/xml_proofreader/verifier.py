@@ -18,10 +18,20 @@ class VerificationError(Exception):
 
 
 def verify(original: bytes, corrected: bytes, expected_tags: int) -> None:
-    """Raise VerificationError unless corrected is original plus expected_tags error elements.
+    """Check that the corrected document is the original plus error tags, and nothing else.
 
     Error tags are removed from both documents before they are compared, so an
     input that already contains error tags is still checked correctly.
+
+    Args:
+        original: The input document bytes.
+        corrected: The annotated document bytes.
+        expected_tags: How many error elements the annotator says it added.
+
+    Raises:
+        VerificationError: If the corrected document does not parse, if any
+            paragraph's text changed, if any byte outside the error tags
+            changed, or if the number of new error tags is wrong.
     """
     try:
         corrected_texts = [p.text for p in find_paragraphs(corrected)]

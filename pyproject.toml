@@ -16,10 +16,33 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=9.1"]
+dev = ["pytest>=9.1", "ruff>=0.17,<0.18", "pyright>=1.1.414"]
 
 [project.scripts]
 xml-proofread = "xml_proofreader.cli:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+# Two docstring rules below are still in Ruff's preview. explicit-preview-rules
+# switches on only the preview rules named in select, and the Ruff version is
+# pinned in the dev dependencies so an update cannot change their behaviour.
+preview = true
+explicit-preview-rules = true
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "C4", "PT", "N", "ANN", "D", "DOC201", "DOC501"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+# Each test's name says what it checks, so tests need no docstrings.
+"tests/*" = ["D1", "DOC201", "DOC501"]
+
+[tool.pyright]
+include = ["src", "tests"]
+venvPath = "."
+venv = ".venv"
