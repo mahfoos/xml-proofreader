@@ -1,0 +1,15 @@
+{
+  "file": "examples/sample_input.xml",
+  "seconds": 9.813271666999754,
+  "peak_memory_mb": 100.109375,
+  "paragraphs": 14,
+  "texts_proofread": 14,
+  "errors_marked": 45,
+  "findings_rejected": 0,
+  "paragraphs_failed": 0,
+  "api_calls": 14,
+  "input_tokens": 1352,
+  "output_tokens": 3118,
+  "cache_read_tokens": 80822,
+  "cache_write_tokens": 0
+}

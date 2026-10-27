@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<document>
+  <body>
+    <section id="sec-1">
+      <heading level="1">Project Overview</heading>
+
+      <p>The <error type="spelling" correction="committee" reason="Misspelled word.">committe</error> has decided to postpone the meeting <error type="spelling" correction="until" reason="Misspelled word.">untill</error> next <error type="capitalization" correction="Wednesday" reason="Days of the week are capitalized.">wednesday</error>, when all members will be <error type="spelling" correction="available" reason="Misspelled word.">availble</error> to attend.</p>
+
+      <p>My name is <error type="capitalization" correction="John" reason="Proper names are capitalized.">john</error> and I work at the <error type="capitalization" correction="New York" reason="Place names are proper nouns and are capitalized.">new york</error> office, where I have been managing client relations for over five years.</p>
+
+      <p>The firm reported approximately <error type="styleguide" correction="$2 million" reason="Spell out million, billion, etc., with currency amounts.">$2,000,000</error> in revenue for <error type="styleguide" correction="January 2024" reason="No comma between month and year.">January, 2024</error>, and plans to expand <error type="punctuation" correction="its" reason="The possessive pronoun its takes no apostrophe.">it's</error> <error type="styleguide" correction="publicly owned" reason="Do not hyphenate compounds whose first element is an -ly adverb; publicly owned is two words.">publicly-owned</error> subsidiaries in the coming fiscal year.</p>
+
+      <p>The quarterly report was submitted on time and all metrics exceeded expectations.</p>
+    </section>
+  </body>
+</document>
