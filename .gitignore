@@ -1,0 +1,19 @@
+# Virtual environment: each developer creates their own
+.venv/
+
+# Python bytecode and tool caches
+__pycache__/
+.pytest_cache/
+
+# Metadata created by pip install -e .
+*.egg-info/
+build/
+dist/
+
+# Secrets: an API key must never be committed
+.env
+
+# Editor and operating-system files
+.vscode/
+.idea/
+.DS_Store

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<document>
+  <body>
+    <section id="sec-1">
+      <heading level="1">Project Overview</heading>
+
+      <p>The <error type="spelling" correction="committee">committe</error> has decided to postpone the meeting <error type="spelling" correction="until">untill</error> next <error type="capitalization" correction="Wednesday">wednesday</error>, when all members will be <error type="spelling" correction="available">availble</error> to attend.</p>
+
+      <p>My name is <error type="capitalization" correction="John">john</error> and I work at the <error type="capitalization" correction="New York">new york</error> office, where I have been managing client relations for over five years.</p>
+
+      <p>The firm reported approximately <error type="styleguide" correction="$2 million" reason="Spell out million, billion, etc.">$2,000,000</error> in revenue for <error type="styleguide" correction="January 2024" reason="No comma between month and year">January, 2024</error>, and plans to expand <error type="punctuation" correction="its" reason="Possessive its has no apostrophe">it's</error> <error type="styleguide" correction="publicly owned" reason="Do not hyphenate ly adverbs">publicly-owned</error> subsidiaries in the coming fiscal year.</p>
+
+      <p>The quarterly report was submitted on time and all metrics exceeded expectations.</p>
+    </section>
+  </body>
+</document>

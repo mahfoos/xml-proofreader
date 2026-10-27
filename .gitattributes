@@ -1,0 +1,2 @@
+# The golden-file tests compare bytes exactly, so Git must never rewrite line endings in fixtures.
+tests/fixtures/** -text
